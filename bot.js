@@ -8,6 +8,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const request = require('request');
 const path = require('path');
+var net = require('net')
 var messengerButton = "<html><head><title>Facebook Messenger Bot</title></head><body><h1>Facebook Messenger Bot</h1>This is a bot based on Messenger Platform QuickStart. For more details, see their <a href=\"https://developers.facebook.com/docs/messenger-platform/guides/quick-start\">docs</a>.<script src=\"https://button.glitch.me/button.js\" data-style=\"glitch\"></script><div class=\"glitchButton\" style=\"position:fixed;top:20px;right:20px;\"></div></body></html>";
 var config = require('./config');
 var fs = require('fs');
@@ -99,7 +100,7 @@ function receivedMessage(event) {
         break;
 
       default:
-        sendTextMessage(senderID, messageText);
+        sendChatMessage(senderID, messageText);
     }
   } else if (messageAttachments) {
     sendTextMessage(senderID, "Message with attachment received");
@@ -137,6 +138,38 @@ function sendTextMessage(recipientId, messageText) {
   };
 
   callSendAPI(messageData);
+}
+var chatscriptConfig = {port: 1024, host: '127.0.0.1', allowHalfOpen: true};
+var chatscriptBot = "Happierbot";
+function sendChatMessage(recipientId, messageText) {
+  var chatscriptSocket = net.createConnection(chatscriptConfig, function(){
+		payload = recipientId+'guest'+'\x00'+chatscriptBot+'\x00'+messageText+'\x00';
+		chatscriptSocket.write(payload);
+		// console.log('send_msg')
+	})
+	// on receive data from chatscriptSocket
+	chatscriptSocket.on('data', function(data) {
+		console.log(data.toString());
+		var messageData = {
+      recipient: {
+        id: recipientId
+      },
+      message: {
+        text: data.toString()
+      }
+    };
+
+    callSendAPI(messageData);
+	})
+	// on end from chatscriptSocket
+	chatscriptSocket.on('end', function() {
+		console.log('disconnected from server');
+	})
+	// on error from chatscriptSocket
+	chatscriptSocket.on('error', function(err) {
+		console.log('error from server ' + err +' '+ chatscriptSocket.address()[1]);
+	})
+  
 }
 
 function sendGenericMessage(recipientId) {
