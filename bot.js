@@ -1,5 +1,6 @@
 
 
+
 //
 // This is main file containing code implementing the Express server and functionality for the Express echo bot.
 //
@@ -36,6 +37,7 @@ app.get('/webhook', function(req, res) {
 
 // Display the web page
 app.get('/', function(req, res) {
+  //console.log(1);
   res.writeHead(200, {'Content-Type': 'text/html'});
   res.write(messengerButton);
   res.end();
@@ -143,7 +145,7 @@ var chatscriptConfig = {port: 1024, host: '127.0.0.1', allowHalfOpen: true};
 var chatscriptBot = "Happierbot";
 function sendChatMessage(recipientId, messageText) {
   var chatscriptSocket = net.createConnection(chatscriptConfig, function(){
-		payload = recipientId+'guest'+'\x00'+chatscriptBot+'\x00'+messageText+'\x00';
+		var payload = recipientId+'guest'+'\x00'+chatscriptBot+'\x00'+messageText+'\x00';
 		chatscriptSocket.write(payload);
 		// console.log('send_msg')
 	})
