@@ -141,11 +141,12 @@ function sendTextMessage(recipientId, messageText) {
 
   callSendAPI(messageData);
 }
+
 var chatscriptConfig = {port: 1024, host: '127.0.0.1', allowHalfOpen: true};
 var chatscriptBot = "Happierbot";
 function sendChatMessage(recipientId, messageText) {
   var chatscriptSocket = net.createConnection(chatscriptConfig, function(){
-		var payload = recipientId+'guest'+'\x00'+chatscriptBot+'\x00'+messageText+'\x00';
+		var payload = recipientId+'\x00'+chatscriptBot+'\x00'+messageText+'\x00';
 		chatscriptSocket.write(payload);
 		// console.log('send_msg')
 	})
