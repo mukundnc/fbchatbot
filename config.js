@@ -1,10 +1,8 @@
-module.exports.ssl = {
-	keyPath: 'key.pem',
-	certPath: 'key-cert.pem'
-};
+
+module.exports.FACEBOOK_URL = "https://graph.facebook.com/v2.6/me/messages";
 
 module.exports.VERIFY_TOKEN="your_secret";
 
 module.exports.PAGE_ACCESS_TOKEN = "your_access_token";
 
-module.exports.securePort = 8080;
+module.exports.PORT = 8080;

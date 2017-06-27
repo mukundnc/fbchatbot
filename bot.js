@@ -1,6 +1,4 @@
 
-
-
 //
 // This is main file containing code implementing the Express server and functionality for the Express echo bot.
 //
@@ -12,11 +10,13 @@ const path = require('path');
 var net = require('net')
 var messengerButton = "<html><head><title>Facebook Messenger Bot</title></head><body><h1>Facebook Messenger Bot</h1>This is a bot based on Messenger Platform QuickStart. For more details, see their <a href=\"https://developers.facebook.com/docs/messenger-platform/guides/quick-start\">docs</a>.<script src=\"https://button.glitch.me/button.js\" data-style=\"glitch\"></script><div class=\"glitchButton\" style=\"position:fixed;top:20px;right:20px;\"></div></body></html>";
 var config = require('./config');
-var fs = require('fs');
-var https = require('https');
 
 // The rest of the code implements the routes for our Express server.
 let app = express();
+var switchState = {
+  on : 0,
+  off: 1
+};
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({
@@ -37,7 +37,6 @@ app.get('/webhook', function(req, res) {
 
 // Display the web page
 app.get('/', function(req, res) {
-  //console.log(1);
   res.writeHead(200, {'Content-Type': 'text/html'});
   res.write(messengerButton);
   res.end();
@@ -55,9 +54,9 @@ app.post('/webhook', function (req, res) {
     data.entry.forEach(function(entry) {
       var pageID = entry.id;
       var timeOfEvent = entry.time;
-
       // Iterate over each messaging event
-      entry.messaging.forEach(function(event) {
+      entry.messaging.forEach(function(event) {     
+        
         if (event.message) {
           receivedMessage(event);
         } else if (event.postback) {
@@ -77,13 +76,83 @@ app.post('/webhook', function (req, res) {
   }
 });
 
+
+function typingSwitch(state, recipientId){
+    var messageData = {
+      recipient: {
+        id: recipientId
+      },
+      sender_action: (state === switchState.on) ? "typing_on" : "typing_off"
+    }
+    request({
+        uri: config.FACEBOOK_URL,
+        qs: { access_token: config.PAGE_ACCESS_TOKEN },
+        method: 'POST',
+        json: messageData
+
+    }, function (error, response, body) {
+        if (!error && response.statusCode == 200) {
+          var recipientId = body.recipient_id;
+          var messageId = body.message_id;
+          console.log("Successfully sent switch state %s for %s", state, recipientId);
+        } else {
+          console.error("Unable to send switch state %s error %s", state, body.error.message);
+        }
+    });  
+}
+
+function sendListTemplate(recipientId){
+    var messageData = {
+      recipient: {
+        id: recipientId
+      },
+      message: {
+        attachment:{
+          type:"template",
+          payload:{
+            template_type: "button",
+            text: "What do you want to do now?",
+            buttons:[{
+              type: "postback",             
+              title: "User information",
+              payload: "access user information"
+            },{
+              type: "postback",   
+              title:"Leave application",
+              payload: "apply leave"
+            },{
+              type: "postback",   
+              title:"General Information",
+              payload: "wish someone"
+            }]
+          }
+        }
+      }
+    };
+    request({
+        uri: config.FACEBOOK_URL,
+        qs: { access_token: config.PAGE_ACCESS_TOKEN },
+        method: 'POST',
+        json: messageData
+
+    }, function (error, response, body) {
+        if (!error && response.statusCode == 200) {
+          var recipientId = body.recipient_id;
+          var messageId = body.message_id;
+          console.log("Successfully sent list data for %s", recipientId);
+        } else {
+          console.error("Unable to send list data error %s", body.error.message);
+        }
+    });  
+}
+
 // Incoming events handling
 function receivedMessage(event) {
   var senderID = event.sender.id;
   var recipientID = event.recipient.id;
   var timeOfMessage = event.timestamp;
   var message = event.message;
-
+  
   console.log("Received message for user %d and page %d at %d with message:", 
     senderID, recipientID, timeOfMessage);
   console.log(JSON.stringify(message));
@@ -123,7 +192,15 @@ function receivedPostback(event) {
 
   // When a postback is called, we'll send a message back to the sender to 
   // let them know it was successful
-  sendTextMessage(senderID, "Postback called");
+  var message = "";
+  if(payload == "access user information"){
+    message = "Search user or Type specific query";
+  }else if(payload == "apply leave"){
+    message = "Type apply leave";
+  }else if(payload == "wish someone"){
+    message = "Type wish today";
+  }
+  sendTextMessage(senderID, message);
 }
 
 //////////////////////////
@@ -145,6 +222,8 @@ function sendTextMessage(recipientId, messageText) {
 var chatscriptConfig = {port: 1024, host: '127.0.0.1', allowHalfOpen: true};
 var chatscriptBot = "Happierbot";
 function sendChatMessage(recipientId, messageText) {
+  
+  typingSwitch(0, recipientId);  
   var chatscriptSocket = net.createConnection(chatscriptConfig, function(){
 		var payload = recipientId+'\x00'+chatscriptBot+'\x00'+messageText+'\x00';
 		chatscriptSocket.write(payload);
@@ -152,17 +231,18 @@ function sendChatMessage(recipientId, messageText) {
 	})
 	// on receive data from chatscriptSocket
 	chatscriptSocket.on('data', function(data) {
-		console.log(data.toString());
-		var messageData = {
-      recipient: {
-        id: recipientId
-      },
-      message: {
-        text: data.toString()
-      }
-    };
-
-    callSendAPI(messageData);
+		console.log("data send to chat server: %s", data.toString());
+    if(data.toString().indexOf("&&&&")>-1){
+      sendListTemplate(recipientId);
+    }else{
+      var messageData = {
+        recipient: {
+          id: recipientId
+        },
+        message: modifyResponse(data.toString())
+      };
+      callSendAPI(messageData);
+    }
 	})
 	// on end from chatscriptSocket
 	chatscriptSocket.on('end', function() {
@@ -174,6 +254,54 @@ function sendChatMessage(recipientId, messageText) {
 	})
   
 }
+
+function callSendAPI(messageData) {  
+  request({
+    uri: config.FACEBOOK_URL,
+    qs: { access_token: config.PAGE_ACCESS_TOKEN },
+    method: 'POST',
+    json: messageData 
+
+  }, function (error, response, body) {
+    if (!error && response.statusCode == 200) {
+      var recipientId = body.recipient_id;
+      var messageId = body.message_id;
+
+      console.log("Successfully sent chat message with id %s to recipient %s", messageId, recipientId);
+    } else {
+      console.error("Unable to send message. error: %s", JSON.stringify(body));
+    }
+  });  
+}
+
+function modifyResponse(msgData){
+  var message = {};
+  var DELIM = "\"@@@\"";
+  if (msgData.indexOf(DELIM) > 0){
+    var tempStr = msgData.split(DELIM);
+    message.text = tempStr[0];
+    message.quick_replies = [];
+    tempStr[1].split("/").map(function(x){
+        var option = x.trim();
+        if(option){
+          var reply = {};
+          reply.content_type = "text";
+          reply.title = option;
+          reply.payload = option;
+          message.quick_replies.push(reply);
+        }        
+    })
+  } else{
+     message.text = msgData;
+  }
+  console.log("msgData: %s", JSON.stringify(message));
+  return message;
+}
+
+var server = app.listen(config.PORT || 8080, function () {
+  console.log("Listening on port %s", server.address().port);
+});
+
 
 function sendGenericMessage(recipientId) {
   var messageData = {
@@ -221,40 +349,3 @@ function sendGenericMessage(recipientId) {
 
   callSendAPI(messageData);
 }
-
-function callSendAPI(messageData) {
-  request({
-    uri: 'https://graph.facebook.com/v2.6/me/messages',
-    qs: { access_token: config.PAGE_ACCESS_TOKEN },
-    method: 'POST',
-    json: messageData
-
-  }, function (error, response, body) {
-    if (!error && response.statusCode == 200) {
-      var recipientId = body.recipient_id;
-      var messageId = body.message_id;
-
-      console.log("Successfully sent generic message with id %s to recipient %s", 
-        messageId, recipientId);
-    } else {
-      console.error("Unable to send message.");
-      console.error("response:",response);
-      console.error("error:",error);
-    }
-  });  
-}
-
-//var sslOptions = {
-//	key: fs.readFileSync(config.ssl.keyPath,'utf8'),
-//	cert: fs.readFileSync(config.ssl.certPath,'utf8'),
-//	passphrase:"mukubnd.nc@gmail.com"
-//};
-
-//var server = https.createServer(sslOptions, app);
-//server.listen(config.securePort || 3001, function(){
-//	console.log("Listening on port %s", server.address().port);
-//});
-// Set Express to listen out for HTTP requests
-var server = app.listen(process.env.PORT || 8080, function () {
-  console.log("Listening on port %s", server.address().port);
-});
